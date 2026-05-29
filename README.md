@@ -1,3 +1,34 @@
+<!-- ============================================================= -->
+<!-- FORK NOTICE — branch: v13.2.0-openai-compatible             -->
+<!-- ============================================================= -->
+
+> ### 🔧 Fork branch: `v13.2.0-openai-compatible`
+>
+> This is a personal fork of [`thedotmack/claude-mem`](https://github.com/thedotmack/claude-mem). This branch replaces the bundled custom provider with a **generic OpenAI-compatible provider**, so claude-mem's memory generation can run against **any OpenAI Chat Completions-compatible endpoint** (Alibaba Qwen/DashScope, MiniMax, OpenRouter-style gateways, local vLLM/Ollama compat layers, …) with your own URL / model / API key.
+>
+> Enable it in `~/.claude-mem/settings.json`:
+>
+> ```json
+> {
+>   "CLAUDE_MEM_PROVIDER": "custom-openai-compatible",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL": "https://your-endpoint/v1",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL": "your-model",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY": "sk-...",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MAX_TOKENS": "8192"
+> }
+> ```
+>
+> - **Wire protocol:** OpenAI Chat Completions (`POST {baseUrl}/chat/completions`, `Authorization: Bearer`). Anthropic `/v1/messages` is **not** used.
+> - **Required:** `BASE_URL`, `MODEL`, `API_KEY`. `MAX_TOKENS` is optional (default `8192`; lower it if a provider caps output, e.g. Qwen's 65536).
+> - **Patch scope:** only the committed `plugin/scripts/worker-service.cjs` is modified; the TypeScript source under `src/` is untouched upstream code.
+> - **Based on:** upstream `v13.2.0` (`f1b73a46`), evolved from the earlier MiniMax patch (`7e98e04`). Does not affect upstream `main` or `thedotmack/claude-mem`.
+>
+> 中文：本分支把内置 provider 改造为通用 OpenAI 兼容 provider，可对接任意 OpenAI 兼容端点（自定义 URL/模型/Key），不影响上游官方仓库。
+>
+> *Everything below is the original upstream README.*
+
+<!-- ============================================================= -->
+
 <h1 align="center">
   <br>
   <a href="https://github.com/thedotmack/claude-mem">
