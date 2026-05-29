@@ -7046,8 +7046,10 @@ var Ru, Tw, c2, Pe, Zr = I(() => {
             CLAUDE_MEM_OPENROUTER_APP_NAME: "claude-mem",
             CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES: "20",
             CLAUDE_MEM_OPENROUTER_MAX_TOKENS: "100000",
-            CLAUDE_MEM_MINIMAX_API_KEY: "",
-            CLAUDE_MEM_MINIMAX_MODEL: "MiniMax-M2.7",
+            CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY: "",
+            CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL: "",
+            CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL: "",
+            CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MAX_TOKENS: "8192",
             CLAUDE_MEM_DATA_DIR: (0, Tw.join)((0, c2.homedir)(), ".claude-mem"),
             CLAUDE_MEM_LOG_LEVEL: "INFO",
             CLAUDE_MEM_PYTHON_VERSION: "3.13",
@@ -140803,12 +140805,12 @@ function bS() {
 
 function isMiniMaxAvailable() {
     let t = Jt;
-    return !!(Pe.loadFromFile(t).CLAUDE_MEM_MINIMAX_API_KEY || Tb("MINIMAX_API_KEY"))
+    return !!Pe.loadFromFile(t).CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY
 }
 
 function isMiniMaxSelected() {
     let t = Jt;
-    return Pe.loadFromFile(t).CLAUDE_MEM_PROVIDER === "minimax"
+    return Pe.loadFromFile(t).CLAUDE_MEM_PROVIDER === "custom-openai-compatible"
 }
 var MiniMaxAgent = class {
     dbManager;
@@ -140819,9 +140821,9 @@ var MiniMaxAgent = class {
     getMiniMaxConfig() {
         let t = Jt,
             e = Pe.loadFromFile(t),
-            r = e.CLAUDE_MEM_MINIMAX_API_KEY || Tb("MINIMAX_API_KEY") || "",
-            n = e.CLAUDE_MEM_MINIMAX_MODEL || "MiniMax-M2.7",
-            i = e.CLAUDE_MEM_MINIMAX_BASE_URL || "https://api.minimaxi.com/v1";
+            r = e.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY || "",
+            n = e.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL || "",
+            i = e.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL || "";
         return { apiKey: r, model: n, baseUrl: i }
     }
     estimateTokens(e) {
@@ -140860,21 +140862,21 @@ var MiniMaxAgent = class {
             o = this.conversationToOpenAIMessages(s),
             a = s.reduce((l, d) => l + d.content.length, 0),
             c = this.estimateTokens(s.map(l => l.content).join(""));
-        E.debug("SDK", `Querying MiniMax multi-turn`, {
+        E.debug("SDK", `Querying Custom (OpenAI-compatible) multi-turn`, {
             turns: s.length, totalChars: a, estimatedTokens: c
         });
         let u = `${i}/chat/completions`;
         let p = await fetch(u, {
             method: "POST",
             headers: { Authorization: `Bearer ${r}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: n, messages: o, temperature: 1.0, max_tokens: 1e5 })
+            body: JSON.stringify({ model: n, messages: o, temperature: 1.0, max_tokens: parseInt(Pe.loadFromFile(Jt).CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MAX_TOKENS) || 8192 })
         });
-        if (!p.ok) { let l = await p.text(); throw new Error(`MiniMax API error: ${p.status} - ${l}`) }
+        if (!p.ok) { let l = await p.text(); throw new Error(`Custom OpenAI-compatible API error: ${p.status} - ${l}`) }
         let m = await p.json();
-        if (m.error) throw new Error(`MiniMax API error: ${m.error.code || "unknown"} - ${m.error.message || m.error}`);
-        if (!m.choices?.[0]?.message?.content) return E.error("SDK", "Empty response from MiniMax"), { content: "" };
+        if (m.error) throw new Error(`Custom OpenAI-compatible API error: ${m.error.code || "unknown"} - ${m.error.message || m.error}`);
+        if (!m.choices?.[0]?.message?.content) return E.error("SDK", "Empty response from Custom (OpenAI-compatible) API"), { content: "" };
         let f = m.choices[0].message.content, g = m.usage?.total_tokens;
-        return g && (E.info("SDK", "MiniMax API usage", {
+        return g && (E.info("SDK", "Custom (OpenAI-compatible) API usage", {
             model: n, inputTokens: m.usage?.prompt_tokens || 0,
             outputTokens: m.usage?.completion_tokens || 0,
             totalTokens: g, messagesInContext: s.length
@@ -140885,11 +140887,13 @@ var MiniMaxAgent = class {
     async startSession(e, r) {
         try {
             let { apiKey: n, model: i, baseUrl: s } = this.getMiniMaxConfig();
-            if (!n) throw new Error("MiniMax API key not configured. Set CLAUDE_MEM_MINIMAX_API_KEY in settings or MINIMAX_API_KEY environment variable.");
+            if (!n) throw new Error("Custom OpenAI-compatible API key not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY in settings.");
+            if (!s) throw new Error("Custom OpenAI-compatible base URL not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL in settings.");
+            if (!i) throw new Error("Custom OpenAI-compatible model not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL in settings.");
             if (!e.memorySessionId) {
-                let d = `minimax-${e.contentSessionId}-${Date.now()}`;
+                let d = `custom-${e.contentSessionId}-${Date.now()}`;
                 e.memorySessionId = d, this.dbManager.getSessionStore().updateMemorySessionId(e.sessionDbId, d),
-                E.info("SESSION", `MEMORY_ID_GENERATED | sessionDbId=${e.sessionDbId} | provider=MiniMax`)
+                E.info("SESSION", `MEMORY_ID_GENERATED | sessionDbId=${e.sessionDbId} | provider=Custom`)
             }
             let o = Mt.getInstance().getActiveMode(),
                 a = e.lastPromptNumber === 1
@@ -140902,8 +140906,8 @@ var MiniMaxAgent = class {
                 let d = c.tokensUsed || 0;
                 e.cumulativeInputTokens += Math.floor(d * .7),
                 e.cumulativeOutputTokens += Math.floor(d * .3),
-                await fu(c.content, e, this.dbManager, this.sessionManager, r, d, null, "MiniMax", void 0, i)
-            } else E.error("SDK", "Empty MiniMax init response - session may lack context", {
+                await fu(c.content, e, this.dbManager, this.sessionManager, r, d, null, "Custom", void 0, i)
+            } else E.error("SDK", "Empty Custom (OpenAI-compatible) init response - session may lack context", {
                 sessionId: e.sessionDbId, model: i
             });
             let u;
@@ -140923,7 +140927,7 @@ var MiniMaxAgent = class {
                     let f = await this.queryMiniMaxMultiTurn(e.conversationHistory, n, i, s), g = 0;
                     f.content && (e.conversationHistory.push({ role: "assistant", content: f.content }),
                         g = f.tokensUsed || 0, e.cumulativeInputTokens += Math.floor(g * .7), e.cumulativeOutputTokens += Math.floor(g * .3)),
-                    await fu(f.content || "", e, this.dbManager, this.sessionManager, r, g, p, "MiniMax", u, i)
+                    await fu(f.content || "", e, this.dbManager, this.sessionManager, r, g, p, "Custom", u, i)
                 } else if (d.type === "summarize") {
                     if (!e.memorySessionId) throw new Error("Cannot process summary: memorySessionId not yet captured.");
                     let m = _E({
@@ -140935,17 +140939,17 @@ var MiniMaxAgent = class {
                     let f = await this.queryMiniMaxMultiTurn(e.conversationHistory, n, i, s), g = 0;
                     f.content && (e.conversationHistory.push({ role: "assistant", content: f.content }),
                         g = f.tokensUsed || 0, e.cumulativeInputTokens += Math.floor(g * .7), e.cumulativeOutputTokens += Math.floor(g * .3)),
-                    await fu(f.content || "", e, this.dbManager, this.sessionManager, r, g, p, "MiniMax", u, i)
+                    await fu(f.content || "", e, this.dbManager, this.sessionManager, r, g, p, "Custom", u, i)
                 }
             }
             let l = Date.now() - e.startTime;
-            E.success("SDK", "MiniMax agent completed", {
+            E.success("SDK", "Custom (OpenAI-compatible) agent completed", {
                 sessionId: e.sessionDbId, duration: `${(l/1e3).toFixed(1)}s`,
                 historyLength: e.conversationHistory.length, model: i
             })
         } catch (n) {
-            if (iI(n)) throw E.warn("SDK", "MiniMax agent aborted", { sessionId: e.sessionDbId }), n;
-            throw E.failure("SDK", "MiniMax agent error", { sessionDbId: e.sessionDbId }, n instanceof Error ? n : new Error(String(n))), n
+            if (iI(n)) throw E.warn("SDK", "Custom (OpenAI-compatible) agent aborted", { sessionId: e.sessionDbId }), n;
+            throw E.failure("SDK", "Custom (OpenAI-compatible) agent error", { sessionDbId: e.sessionDbId }, n instanceof Error ? n : new Error(String(n))), n
         }
     }
 };
@@ -147069,13 +147073,13 @@ var J7 = 256 * 1024,
                 throw new Error("Gemini provider selected but no API key configured. Set CLAUDE_MEM_GEMINI_API_KEY in settings or GEMINI_API_KEY environment variable.")
             }
             if (isMiniMaxSelected()) {
-                if (isMiniMaxAvailable()) return E.debug("SESSION", "Using MiniMax agent"), this.minimaxAgent;
-                throw new Error("MiniMax provider selected but no API key configured. Set CLAUDE_MEM_MINIMAX_API_KEY in settings or MINIMAX_API_KEY environment variable.")
+                if (isMiniMaxAvailable()) return E.debug("SESSION", "Using Custom (OpenAI-compatible) agent"), this.minimaxAgent;
+                throw new Error("Custom OpenAI-compatible provider selected but no API key configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY in settings.")
             }
             return this.sdkAgent
         }
         getSelectedProvider() {
-            return bS() && Cy() ? "openrouter" : yS() && Ry() ? "gemini" : isMiniMaxSelected() && isMiniMaxAvailable() ? "minimax" : "claude"
+            return bS() && Cy() ? "openrouter" : yS() && Ry() ? "gemini" : isMiniMaxSelected() && isMiniMaxAvailable() ? "custom-openai-compatible" : "claude"
         }
         async ensureGeneratorRunning(r, n) {
             let i = this.sessionManager.getSession(r);
@@ -147097,8 +147101,8 @@ var J7 = 256 * 1024,
             r.abortController.signal.aborted && (E.debug("SESSION", "Resetting aborted AbortController before starting generator", {
                 sessionId: r.sessionDbId
             }), r.abortController = new AbortController);
-            let s = n === "openrouter" ? this.openRouterAgent : n === "gemini" ? this.geminiAgent : n === "minimax" ? this.minimaxAgent : this.sdkAgent,
-                o = n === "openrouter" ? "OpenRouter" : n === "gemini" ? "Gemini" : n === "minimax" ? "MiniMax" : "Claude SDK",
+            let s = n === "openrouter" ? this.openRouterAgent : n === "gemini" ? this.geminiAgent : n === "custom-openai-compatible" ? this.minimaxAgent : this.sdkAgent,
+                o = n === "openrouter" ? "OpenRouter" : n === "gemini" ? "Gemini" : n === "custom-openai-compatible" ? "Custom (OpenAI-compatible)" : "Claude SDK",
                 c = await this.sessionManager.getPendingMessageStore().getPendingCount(r.sessionDbId);
             E.info("SESSION", `Generator auto-starting (${i}) using ${o}`, {
                 sessionId: r.sessionDbId,
@@ -149358,7 +149362,7 @@ var Eq = class t {
             workerPath: __filename,
             getAiStatus: () => {
                 let e = "claude";
-                return bS() && Cy() ? e = "openrouter" : yS() && Ry() ? e = "gemini" : isMiniMaxSelected() && isMiniMaxAvailable() && (e = "minimax"), {
+                return bS() && Cy() ? e = "openrouter" : yS() && Ry() ? e = "gemini" : isMiniMaxSelected() && isMiniMaxAvailable() && (e = "custom-openai-compatible"), {
                     provider: e,
                     authMethod: sk(),
                     lastInteraction: this.lastAiInteraction ? {
