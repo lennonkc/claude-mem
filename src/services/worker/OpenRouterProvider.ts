@@ -197,7 +197,17 @@ export class OpenRouterProvider {
     // gateways often fabricate or omit usage — let telemetry segment the two.
     session.endpointClass = apiUrl.includes('openrouter.ai') ? 'openrouter' : 'custom';
 
-    if (!apiKey) {
+    if (isCustomOpenAICompatibleSelected()) {
+      if (!apiKey) {
+        throw new Error('Custom OpenAI-compatible API key not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY in settings.');
+      }
+      if (!apiUrl) {
+        throw new Error('Custom OpenAI-compatible base URL not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL in settings.');
+      }
+      if (!model) {
+        throw new Error('Custom OpenAI-compatible model not configured. Set CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL in settings.');
+      }
+    } else if (!apiKey) {
       throw new Error('OpenRouter API key not configured. Set CLAUDE_MEM_OPENROUTER_API_KEY in settings or OPENROUTER_API_KEY environment variable.');
     }
 
@@ -431,8 +441,9 @@ export class OpenRouterProvider {
   private truncateHistory(history: ConversationMessage[]): ConversationMessage[] {
     const settings = SettingsDefaultsManager.loadFromFile(USER_SETTINGS_PATH);
 
+    const isCustom = settings.CLAUDE_MEM_PROVIDER === 'custom-openai-compatible';
     const MAX_CONTEXT_MESSAGES = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES) || DEFAULT_MAX_CONTEXT_MESSAGES;
-    const MAX_ESTIMATED_TOKENS = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS) || DEFAULT_MAX_ESTIMATED_TOKENS;
+    const MAX_ESTIMATED_TOKENS = parseInt(isCustom ? settings.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MAX_TOKENS : settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS) || DEFAULT_MAX_ESTIMATED_TOKENS;
 
     if (history.length <= MAX_CONTEXT_MESSAGES) {
       const totalTokens = history.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
@@ -601,6 +612,25 @@ export class OpenRouterProvider {
     const settingsPath = USER_SETTINGS_PATH;
     const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
 
+    // custom-openai-compatible reuses this OpenAI-compatible client but sources
+    // its credentials/endpoint/model from the dedicated CUSTOM_* settings. The
+    // base URL is required (no implicit OpenRouter fallback) — startSession
+    // validates it and throws a clear error when missing.
+    if (settings.CLAUDE_MEM_PROVIDER === 'custom-openai-compatible') {
+      const customApiKey = settings.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY || '';
+      const rawCustomModel: unknown = settings.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL;
+      const customModel = typeof rawCustomModel === 'string' && rawCustomModel.trim()
+        ? rawCustomModel
+        : Array.isArray(rawCustomModel) && rawCustomModel.length > 0
+          ? rawCustomModel.map(String).join(',')
+          : '';
+      const customBaseUrl = settings.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL || '';
+      const customApiUrl = customBaseUrl
+        ? resolveOpenRouterChatCompletionsUrl(customBaseUrl)
+        : '';
+      return { apiKey: customApiKey, model: customModel, apiUrl: customApiUrl, siteUrl: '', appName: 'claude-mem' };
+    }
+
     const apiKey = settings.CLAUDE_MEM_OPENROUTER_API_KEY || getCredential('OPENROUTER_API_KEY') || '';
 
     // Model is passed verbatim — any OpenAI-compatible model id is accepted
@@ -637,4 +667,22 @@ export function isOpenRouterSelected(): boolean {
   const settingsPath = USER_SETTINGS_PATH;
   const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
   return settings.CLAUDE_MEM_PROVIDER === 'openrouter';
+}
+
+/**
+ * custom-openai-compatible is a thin alias over the OpenAI-compatible OpenRouter
+ * client: same wire protocol, but credentials/endpoint/model come from the
+ * dedicated CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_* settings. It routes through the
+ * shared openRouterAgent instance — see getOpenRouterConfig() for the config source.
+ */
+export function isCustomOpenAICompatibleSelected(): boolean {
+  const settingsPath = USER_SETTINGS_PATH;
+  const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
+  return settings.CLAUDE_MEM_PROVIDER === 'custom-openai-compatible';
+}
+
+export function isCustomOpenAICompatibleAvailable(): boolean {
+  const settingsPath = USER_SETTINGS_PATH;
+  const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
+  return !!settings.CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY;
 }
