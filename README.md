@@ -1,3 +1,35 @@
+<!-- ============================================================= -->
+<!-- FORK NOTICE — branch: v13.6.2-openai-compatible             -->
+<!-- ============================================================= -->
+
+> ### 🔧 Fork branch: `v13.6.2-openai-compatible`
+>
+> This is a personal fork of [`thedotmack/claude-mem`](https://github.com/thedotmack/claude-mem). This branch adds a **`custom-openai-compatible` provider** so claude-mem's memory generation can run against **any OpenAI Chat Completions-compatible endpoint** (Alibaba Qwen/DashScope, MiniMax, OpenRouter-style gateways, local vLLM/Ollama compat layers, …) using its **own dedicated settings**, separate from the built-in `openrouter` provider.
+>
+> Enable it in `~/.claude-mem/settings.json`:
+>
+> ```json
+> {
+>   "CLAUDE_MEM_PROVIDER": "custom-openai-compatible",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_BASE_URL": "https://your-endpoint/v1",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MODEL": "your-model",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_API_KEY": "sk-...",
+>   "CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_MAX_TOKENS": "32768"
+> }
+> ```
+>
+> - **Wire protocol:** OpenAI Chat Completions (`POST {baseUrl}/chat/completions`, `Authorization: Bearer`). Anthropic `/v1/messages` is **not** used. The provider reuses the upstream OpenAI-compatible OpenRouter client, but sources its credentials/endpoint/model from the dedicated `CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_*` settings.
+> - **Required:** `BASE_URL`, `MODEL`, `API_KEY` (the worker throws a clear error if any is missing). `MAX_TOKENS` is optional (default `100000`; it caps the estimated context window).
+> - **Patch scope (changed vs the old `v13.2.0-openai-compatible` branch):** this branch patches the **TypeScript source** under `src/` (provider selection, settings defaults/validation, the OpenAI-compatible client) and the committed `plugin/scripts/worker-service.cjs` is **rebuilt from source** via the normal `npm run build` (esbuild) pipeline — no more hand-editing of the minified bundle.
+> - **Based on:** upstream `v13.6.2`. Does not affect upstream `main` or `thedotmack/claude-mem`.
+> - **Note:** upstream `13.6.x` already lets the built-in `openrouter` provider point at any OpenAI-compatible base URL via `CLAUDE_MEM_OPENROUTER_BASE_URL`. This branch keeps a *separate* `custom-openai-compatible` provider so its config never collides with a real OpenRouter setup.
+>
+> 中文：本分支在上游 `v13.6.2` 基础上，**以源码级改动**新增 `custom-openai-compatible` provider，可用独立的 `CLAUDE_MEM_CUSTOM_OPENAI_COMPATIBLE_*` 配置对接任意 OpenAI 兼容端点（自定义 URL/模型/Key），bundle 由 `npm run build` 正常重新构建，不再手改压缩产物，且不影响上游官方仓库。
+>
+> *Everything below is the original upstream README.*
+
+<!-- ============================================================= -->
+
 <h1 align="center">
   <br>
   <a href="https://github.com/thedotmack/claude-mem">
